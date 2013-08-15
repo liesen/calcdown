@@ -17,4 +17,4 @@ cabal-version:       >=1.8
 executable calcdown
   main-is:             Main.hs
   -- other-modules:       
-  build-depends:       base ==4.6.*, pandoc, caldims, parsec, mtl
+  build-depends:       base ==4.6.*, pandoc, caldims, parsec, mtl, syb, containers
