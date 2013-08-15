@@ -40,15 +40,28 @@ writeDoc = writeMarkdown def
 transformDoc :: Pandoc -> Pandoc
 transformDoc = bottomUp evalCodeBlock
 
-transformDocM :: Pandoc -> Pandoc
-transformDocM = flip evalState S.start . everywhereM (mkM evalCodeBlockM)
+type HeaderLevel = Int
 
-evalCodeBlockM :: MonadState S.State m => Block -> m Block
-evalCodeBlockM (CodeBlock attrs s) = do state <- get
+instance Monoid S.State where
+  mempty = S.start
+  state1 `mappend` state2 = let scope = getScope state1 `mappend` getScope state2
+                                args = getArgs state1 `mappend` getArgs state2
+                                argValues = getArgValues state1 `mappend` getArgValues state2
+                            in S.State scope args argValues
+
+transformDocM :: Pandoc -> Pandoc
+transformDocM = flip evalState (0, [S.start]) . everywhereM (mkM evalCodeBlockM)
+
+evalCodeBlockM :: MonadState (HeaderLevel, [S.State]) m => Block -> m Block
+evalCodeBlockM (CodeBlock attrs s) = do (depth, state:states) <- get
                                         let (state', codelines') = runWriter . foldM evalCodeLine state . lines $ s
                                             s' = concat . intersperse "\n" $ codelines'
-                                        put state'
+                                        put (depth, state':states)
                                         return (CodeBlock attrs s')
+evalCodeBlockM header@(Header k _ _) = do (depth, state:states) <- get
+                                          when (k < depth) $ put (k, drop (depth - k) states)
+                                          when (k > depth) $ put (k, replicate (k - depth) state ++ states)
+                                          return header
 evalCodeBlockM block = return block
 
 main = interact (writeDoc . transformDocM . readDoc)
