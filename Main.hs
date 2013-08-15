@@ -3,10 +3,10 @@ module Main where
 
 import Control.Monad
 import Control.Monad.State
-import Control.Monad.Writer
 import Data.Generics
 import Data.List
 import Data.Maybe
+import Data.Monoid
 import Language.CalDims.Action
 import Language.CalDims.Misc
 import Language.CalDims.Types
@@ -34,13 +34,13 @@ transformDoc = flip evalState (0, [S.start]) . everywhereM (mkM evalCodeBlock)
 
 evalCodeBlock :: MonadState (HeaderLevel, [S.State]) m => Block -> m Block
 evalCodeBlock (CodeBlock attrs s) = do (depth, state:states) <- get
-                                       let (state', codelines') = runWriter . foldM evalCodeLine state . lines $ s
-                                           s' = concat . intersperse "\n" $ codelines'
+                                       let (state', codelines') = mapAccumL evalCodeLine state (lines s)
+                                           s' = unlines codelines'
                                        put (depth, state':states)
                                        return (CodeBlock attrs s')
 evalCodeBlock header@(Header k _ _) = do (depth, state:states) <- get
                                          when (k < depth) $ put (k, drop (depth - k) states)
-                                         when (k > depth) $ put (k, replicate (k - depth) state ++ states)
+                                         when (k > depth) $ put (k, replicate (k - depth) state ++ (state:states))
                                          return header
 evalCodeBlock block = return block
 
@@ -52,7 +52,6 @@ evalCodeLine state line = let (state', line') = case runParser parseLine state "
                                                                         (Right res, state') -> case res of
                                                                                                  Ok Nothing -> (state', line)
                                                                                                  _          -> (state', line ++ " => " ++ pretty res)
-                          in do tell [line']
-                                return state'
+                          in do (state', line')
 
 main = interact (writeDoc . transformDoc . readDoc)
